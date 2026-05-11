@@ -173,6 +173,18 @@ See [`agent-orchestrator.yaml.example`](agent-orchestrator.yaml.example) for the
 
 AO keeps your Mac awake while running, so you can access the dashboard remotely (e.g., via Tailscale from your phone) without the machine going to sleep.
 
+**Network binding:** By default, both the dashboard and the terminal WebSocket bind to `127.0.0.1` so that nothing on your LAN or Tailnet can reach them without your knowledge. To expose the dashboard for remote access, set `AO_BIND_HOST` to the interface you want to bind:
+
+```bash
+# Tailscale / VPN: bind to all interfaces, rely on the network being trusted
+AO_BIND_HOST=0.0.0.0 ao start
+
+# Bind to a specific Tailscale IP
+AO_BIND_HOST=100.x.y.z ao start
+```
+
+The terminal WebSocket has no auth or origin check, so only widen the bind on networks you trust, or put a reverse proxy with authentication in front.
+
 **How it works:** On macOS, AO automatically holds an idle-sleep prevention assertion using `caffeinate`. When AO exits, the assertion is released.
 
 ```yaml

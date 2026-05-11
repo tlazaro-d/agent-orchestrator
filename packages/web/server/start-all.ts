@@ -101,14 +101,15 @@ function resolveNextBin(): string {
 
 // Start Next.js production server
 const port = process.env["PORT"] || "3000";
+const host = process.env["AO_BIND_HOST"] ?? "127.0.0.1";
 const nextBin = resolveNextBin();
 
 if (process.platform === "win32" && nextBin !== "next") {
   // On Windows, run the JS entry point via the current node binary.
   // spawn() can't execute .js files directly on Windows.
-  spawnProcess("next", process.execPath, [nextBin, "start", "-p", port]);
+  spawnProcess("next", process.execPath, [nextBin, "start", "-p", port, "-H", host]);
 } else {
-  spawnProcess("next", nextBin, ["start", "-p", port]);
+  spawnProcess("next", nextBin, ["start", "-p", port, "-H", host]);
 }
 
 // Start direct terminal WebSocket server (auto-restart on crash)
