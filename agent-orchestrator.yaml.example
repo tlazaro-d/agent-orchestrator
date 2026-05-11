@@ -95,7 +95,8 @@ projects:
 
     # Agent-specific config
     # agentConfig:
-    #   permissions: skip    # --dangerously-skip-permissions
+    #   permissions: auto-edit  # claude-code: --permission-mode acceptEdits (auto-accepts edits, still asks for shell commands)
+    #   # other values: permissionless (--dangerously-skip-permissions), default, suggest
     #   model: opus
 
     # Optional role-specific agent overrides
