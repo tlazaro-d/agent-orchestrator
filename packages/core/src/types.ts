@@ -1632,7 +1632,7 @@ export interface OpenCodeAgentConfig extends AgentSpecificConfig {
  * Note: Not every agent exposes all granular policies; plugins map these modes to
  * their closest supported behavior.
  */
-export type AgentPermissionMode = "permissionless" | "default" | "auto-edit" | "suggest";
+export type AgentPermissionMode = "permissionless" | "default" | "auto" | "auto-edit" | "suggest";
 
 /** Backward-compatible legacy alias accepted in config parsing. */
 export type LegacyAgentPermissionMode = "skip";
@@ -1648,6 +1648,7 @@ export function normalizeAgentPermissionMode(
   if (
     mode !== "permissionless" &&
     mode !== "default" &&
+    mode !== "auto" &&
     mode !== "auto-edit" &&
     mode !== "suggest"
   ) {

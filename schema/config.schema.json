@@ -224,7 +224,7 @@
     },
     "agentPermission": {
       "type": "string",
-      "enum": ["permissionless", "default", "auto-edit", "suggest", "skip"],
+      "enum": ["permissionless", "default", "auto", "auto-edit", "suggest", "skip"],
       "default": "permissionless"
     },
     "agentSpecificConfig": {
