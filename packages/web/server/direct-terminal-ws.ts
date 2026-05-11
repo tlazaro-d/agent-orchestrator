@@ -96,6 +96,7 @@ const isMainModule =
 
 if (isMainModule) {
   const PORT = parseInt(process.env.DIRECT_TERMINAL_PORT ?? "14801", 10);
+  const HOST = process.env.AO_BIND_HOST ?? "127.0.0.1";
 
   // On Windows, findTmux() returns null — mux-websocket.ts handles this by
   // using named pipe relay to PTY hosts instead of tmux attach.
@@ -110,8 +111,8 @@ if (isMainModule) {
 
   const { server, shutdown } = createDirectTerminalServer(TMUX);
 
-  server.listen(PORT, () => {
-    console.log(`[DirectTerminal] WebSocket server listening on port ${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`[DirectTerminal] WebSocket server listening on ${HOST}:${PORT}`);
   });
 
   function handleShutdown(signal: string) {
