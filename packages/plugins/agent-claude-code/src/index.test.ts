@@ -913,8 +913,8 @@ describe("hook setup — relative path (symlink-safe)", () => {
     );
 
     const hookCommand = getWrittenHookCommand();
-    expect(hookCommand).toBe(".claude/metadata-updater.sh");
-    expect(hookCommand).not.toMatch(/^\//);
+    expect(hookCommand).toBe('"$CLAUDE_PROJECT_DIR/.claude/metadata-updater.sh"');
+    expect(hookCommand).toContain("$CLAUDE_PROJECT_DIR");
   });
 
   it("postLaunchSetup is a no-op (hooks installed pre-launch via setupWorkspaceHooks)", async () => {
@@ -982,7 +982,7 @@ describe("hook setup — relative path (symlink-safe)", () => {
     );
 
     const hookCommand = getWrittenHookCommand();
-    expect(hookCommand).toBe(".claude/metadata-updater.sh");
+    expect(hookCommand).toBe('"$CLAUDE_PROJECT_DIR/.claude/metadata-updater.sh"');
   });
 
   it("still writes the script file to the correct absolute filesystem path", async () => {
@@ -1069,8 +1069,9 @@ describe("setupWorkspaceHooks on win32", () => {
     );
 
     const hookCommand = getWrittenHookCommand();
-    expect(hookCommand).toBe("node .claude/metadata-updater.cjs");
+    expect(hookCommand).toBe('node "%CLAUDE_PROJECT_DIR%\\.claude\\metadata-updater.cjs"');
     expect(hookCommand).not.toContain(".sh");
+    expect(hookCommand).toContain("%CLAUDE_PROJECT_DIR%");
   });
 
   it("skips chmod on win32", async () => {

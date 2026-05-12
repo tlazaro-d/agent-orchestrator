@@ -781,6 +781,11 @@ async function setupHookInWorkspace(workspacePath: string): Promise<void> {
 
   // On Windows: write a Node.js hook script, skip chmod (not needed).
   // On Unix: write the bash hook script and make it executable.
+  //
+  // Hook commands use `$CLAUDE_PROJECT_DIR` (set by Claude Code in the hook
+  // environment) so the script resolves correctly regardless of the agent's
+  // current working directory. Bare relative paths break the moment an agent
+  // `cd`s into a subdirectory of the workspace — common in monorepos.
   let hookCommand: string;
   if (isWindows()) {
     const hookScriptPath = join(claudeDir, "metadata-updater.cjs");
@@ -788,12 +793,12 @@ async function setupHookInWorkspace(workspacePath: string): Promise<void> {
     // No chmod — Windows uses file extension for executability
     // Use `node` to invoke the script (Windows won't run .js via shebang)
     // Use .cjs extension to force CJS mode regardless of workspace package.json "type" field
-    hookCommand = "node .claude/metadata-updater.cjs";
+    hookCommand = 'node "%CLAUDE_PROJECT_DIR%\\.claude\\metadata-updater.cjs"';
   } else {
     const hookScriptPath = join(claudeDir, "metadata-updater.sh");
     await writeFile(hookScriptPath, METADATA_UPDATER_SCRIPT, "utf-8");
     await chmod(hookScriptPath, 0o755); // Make executable
-    hookCommand = ".claude/metadata-updater.sh";
+    hookCommand = '"$CLAUDE_PROJECT_DIR/.claude/metadata-updater.sh"';
   }
 
   // Read existing settings if present
