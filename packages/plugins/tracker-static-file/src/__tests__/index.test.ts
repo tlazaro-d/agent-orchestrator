@@ -89,11 +89,11 @@ describe("tracker-static-file: generatePrompt", () => {
 });
 
 describe("tracker-static-file: listIssues with blocker filtering", () => {
-  it("returns all issues when state filter is omitted", async () => {
+  it("default state filter is open (omitted filter behaves like state='open')", async () => {
     const tracker = create({ ticketsPath: path.join(FIXTURES, "tickets-with-blockers.json"), seedPromptDir: FIXTURES });
     const issues = await tracker.listIssues!({}, project);
-    expect(issues.map(i => i.id).sort()).toEqual(["REP-1", "REP-2"].sort());
-    // REP-3 (blocked by REP-2 which is open) is EXCLUDED — blocker filtering hides it from the open queue
+    expect(issues.map(i => i.id)).toEqual(["REP-2"]);
+    // REP-1 is closed (excluded by default state="open"); REP-3 is blocked by REP-2 (excluded by blocker filter)
   });
 
   it("filters by state when state='open'", async () => {
@@ -132,6 +132,15 @@ describe("tracker-static-file: updateIssue", () => {
     expect(after.state).toBe("closed");
     const onDisk = JSON.parse(fs.readFileSync(ticketsPath, "utf-8"));
     expect(onDisk.find((t: { id: string }) => t.id === "REP-1").status).toBe("done");
+  });
+
+  it("does not leave a temp file behind after a successful updateIssue", async () => {
+    const tracker = create({ ticketsPath, seedPromptDir: tmpDir });
+    await tracker.updateIssue!("REP-1", { state: "closed" }, project);
+    const stragglers = fs
+      .readdirSync(tmpDir)
+      .filter((f) => f.startsWith("tickets.json.") || f.includes(".tmp."));
+    expect(stragglers).toEqual([]);
   });
 
   it("unblocks REP-2 after REP-1 is closed (re-read via listIssues)", async () => {

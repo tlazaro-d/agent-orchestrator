@@ -6,12 +6,13 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  Tracker,
-  Issue,
-  IssueFilters,
-  IssueUpdate,
-  ProjectConfig,
+import {
+  atomicWriteFileSync,
+  type Tracker,
+  type Issue,
+  type IssueFilters,
+  type IssueUpdate,
+  type ProjectConfig,
 } from "@aoagents/ao-core";
 import type { TicketEntry, StaticFileTrackerConfig, TicketsFile } from "./types.js";
 
@@ -86,14 +87,19 @@ export function create(config?: Record<string, unknown>): Tracker {
     return t;
   }
 
-  function urlFor(id: string): string {
+  function urlForTicket(t: TicketEntry): string {
+    if (issueUrlBase) return issueUrlBase + t.id;
+    return `file://${path.resolve(seedPromptDir, t.seedPromptPath)}`;
+  }
+
+  function urlForId(id: string): string {
     if (issueUrlBase) return issueUrlBase + id;
     const tickets = load();
     const t = tickets.find((x) => x.id === id);
     if (!t) {
       return `file://${path.resolve(ticketsPath)}#${id}`;
     }
-    return `file://${path.resolve(seedPromptDir, t.seedPromptPath)}`;
+    return urlForTicket(t);
   }
 
   function toIssue(t: TicketEntry): Issue {
@@ -101,7 +107,7 @@ export function create(config?: Record<string, unknown>): Tracker {
       id: t.id,
       title: t.title,
       description: "",
-      url: urlFor(t.id),
+      url: urlForTicket(t),
       state: ticketStatusToIssueState(t.status),
       labels: [],
     };
@@ -124,7 +130,7 @@ export function create(config?: Record<string, unknown>): Tracker {
     },
 
     issueUrl(identifier: string, _project: ProjectConfig): string {
-      return urlFor(identifier);
+      return urlForId(identifier);
     },
 
     branchName(identifier: string, _project: ProjectConfig): string {
@@ -157,7 +163,7 @@ export function create(config?: Record<string, unknown>): Tracker {
       _project: ProjectConfig,
     ): Promise<Issue[]> {
       const tickets = load();
-      const stateFilter = filters.state;
+      const stateFilter = filters.state ?? "open";
       const statusById = new Map(tickets.map((t) => [t.id, t.status] as const));
 
       const result: Issue[] = [];
@@ -208,10 +214,10 @@ export function create(config?: Record<string, unknown>): Tracker {
         status: issueStateToTicketStatus(update.state),
       };
       tickets[idx] = next;
-      await fs.promises.writeFile(
-        ticketsPath,
-        JSON.stringify(tickets, null, 2) + "\n",
-      );
+      // Atomic write via temp-file + rename. agent-orchestrator.yaml's polling
+      // loop is single-writer per project, so atomic rename is sufficient and
+      // no file lock is needed for v1.
+      atomicWriteFileSync(ticketsPath, JSON.stringify(tickets, null, 2) + "\n");
     },
   };
 }
