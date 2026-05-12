@@ -44,16 +44,29 @@ function issueStateToTicketStatus(
 }
 
 export function create(config?: Record<string, unknown>): Tracker {
-  if (!config || typeof config !== "object") {
-    throw new Error(
-      "tracker-static-file: config is required and must include ticketsPath",
-    );
-  }
-  const cfg = config as unknown as StaticFileTrackerConfig;
-  if (!cfg.ticketsPath || typeof cfg.ticketsPath !== "string") {
-    throw new Error("tracker-static-file: config.ticketsPath is required");
+  // When AO loads the plugin at startup with no config (e.g. during plugin
+  // registry initialization or `ao doctor`), return a stub tracker that throws
+  // clear errors only when its methods are invoked. Real per-project use calls
+  // create(config) with the tracker block from agent-orchestrator.yaml.
+  if (!config || typeof config !== "object" || !(config as unknown as StaticFileTrackerConfig).ticketsPath) {
+    const explain = (): never => {
+      throw new Error(
+        "tracker-static-file: not configured. Add `tracker: { plugin: static-file, ticketsPath: ... }` to your project's agent-orchestrator.yaml.",
+      );
+    };
+    return {
+      name: "static-file",
+      getIssue: () => explain(),
+      isCompleted: () => explain(),
+      issueUrl: () => explain(),
+      branchName: () => explain(),
+      generatePrompt: () => explain(),
+      listIssues: () => explain(),
+      updateIssue: () => explain(),
+    };
   }
 
+  const cfg = config as unknown as StaticFileTrackerConfig;
   const ticketsPath = cfg.ticketsPath;
   const seedPromptDir = cfg.seedPromptDir ?? path.dirname(ticketsPath);
   const issueUrlBase = cfg.issueUrlBase ?? "";

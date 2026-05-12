@@ -112,6 +112,9 @@ importers:
       '@aoagents/ao-plugin-tracker-linear':
         specifier: workspace:*
         version: link:../plugins/tracker-linear
+      '@aoagents/ao-plugin-tracker-static-file':
+        specifier: workspace:*
+        version: link:../plugins/tracker-static-file
       '@aoagents/ao-plugin-workspace-clone':
         specifier: workspace:*
         version: link:../plugins/workspace-clone
