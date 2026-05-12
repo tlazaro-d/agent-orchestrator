@@ -410,6 +410,23 @@ function parseGitHubWebhookEvent(
     };
   }
 
+  if (rawEventType === "merge_group") {
+    const mergeGroup = payload["merge_group"] as Record<string, unknown> | undefined;
+    const headRef = typeof mergeGroup?.["head_ref"] === "string" ? (mergeGroup["head_ref"] as string) : undefined;
+    return {
+      provider: "github",
+      kind: "ci",
+      action,
+      rawEventType,
+      deliveryId,
+      repository,
+      branch: parseWebhookBranchRef(headRef ?? mergeGroup?.["base_ref"]),
+      sha: typeof mergeGroup?.["head_sha"] === "string" ? (mergeGroup["head_sha"] as string) : undefined,
+      timestamp: parseWebhookTimestamp(payload["updated_at"]),
+      data: payload,
+    };
+  }
+
   if (rawEventType === "push") {
     const headCommit =
       payload["head_commit"] && typeof payload["head_commit"] === "object"

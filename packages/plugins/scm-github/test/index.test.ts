@@ -386,6 +386,34 @@ describe("scm-github plugin", () => {
         }),
       );
     });
+
+    it("parses merge_group events with head_ref and head_sha", async () => {
+      const event = await scm.parseWebhook?.(
+        makeWebhookRequest({
+          headers: { "x-github-event": "merge_group" },
+          body: JSON.stringify({
+            action: "checks_requested",
+            merge_group: {
+              head_ref: "refs/heads/gh-readonly-queue/main/pr-42-abc",
+              head_sha: "deadbeef",
+              base_ref: "refs/heads/main",
+            },
+            repository: { owner: { login: "acme" }, name: "repo" },
+          }),
+        }),
+        project,
+      );
+
+      expect(event).toEqual(
+        expect.objectContaining({
+          provider: "github",
+          kind: "ci",
+          rawEventType: "merge_group",
+          action: "checks_requested",
+          sha: "deadbeef",
+        }),
+      );
+    });
   });
 
   // ---- detectPR ----------------------------------------------------------

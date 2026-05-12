@@ -355,6 +355,8 @@ export function readPREnrichmentFromMetadata(
       },
       unresolvedThreads: reviewData.unresolvedThreads ?? 0,
       unresolvedComments: reviewData.unresolvedComments ?? [],
+      ...(e.autoMerge ? { autoMerge: e.autoMerge } : {}),
+      ...(e.mergeQueue ? { mergeQueue: e.mergeQueue } : {}),
     };
   } catch {
     return null;

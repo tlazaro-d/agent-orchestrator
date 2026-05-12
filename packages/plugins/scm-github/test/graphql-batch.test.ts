@@ -591,6 +591,92 @@ describe("PR Enrichment Data Extraction", () => {
     expect(extractPREnrichment({ invalid: "data" })).toBeNull();
   });
 
+  it("should extract autoMergeRequest into PRAutoMergeInfo", () => {
+    const pullRequest = {
+      title: "Auto-merge armed",
+      state: "OPEN",
+      additions: 1,
+      deletions: 1,
+      isDraft: false,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "BLOCKED",
+      reviewDecision: "APPROVED",
+      autoMergeRequest: {
+        mergeMethod: "SQUASH",
+        enabledBy: { login: "alice" },
+      },
+      reviews: { nodes: [] },
+      commits: {
+        nodes: [
+          { commit: { statusCheckRollup: { state: "PENDING", contexts: { nodes: [] } } } },
+        ],
+      },
+    };
+
+    const extracted = extractPREnrichment(pullRequest);
+    expect(extracted?.data.autoMerge).toEqual({
+      mergeMethod: "squash",
+      enabledBy: "alice",
+    });
+    expect(extracted?.data.mergeStateStatus).toBe("BLOCKED");
+  });
+
+  it("should leave autoMerge undefined when not armed", () => {
+    const pullRequest = {
+      title: "Plain",
+      state: "OPEN",
+      additions: 1,
+      deletions: 1,
+      isDraft: false,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      autoMergeRequest: null,
+      mergeQueueEntry: null,
+      reviews: { nodes: [] },
+      commits: {
+        nodes: [
+          { commit: { statusCheckRollup: { state: "SUCCESS", contexts: { nodes: [] } } } },
+        ],
+      },
+    };
+
+    const extracted = extractPREnrichment(pullRequest);
+    expect(extracted?.data.autoMerge).toBeUndefined();
+    expect(extracted?.data.mergeQueue).toBeUndefined();
+  });
+
+  it("should extract mergeQueueEntry into PRMergeQueueInfo", () => {
+    const pullRequest = {
+      title: "In queue",
+      state: "OPEN",
+      additions: 1,
+      deletions: 1,
+      isDraft: false,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "BLOCKED",
+      reviewDecision: "APPROVED",
+      mergeQueueEntry: {
+        state: "AWAITING_CHECKS",
+        position: 3,
+        enqueuedAt: "2026-05-12T00:00:00Z",
+      },
+      reviews: { nodes: [] },
+      commits: {
+        nodes: [
+          { commit: { statusCheckRollup: { state: "PENDING", contexts: { nodes: [] } } } },
+        ],
+      },
+    };
+
+    const extracted = extractPREnrichment(pullRequest);
+    expect(extracted?.data.mergeQueue).toEqual({
+      state: "awaiting_checks",
+      position: 3,
+      enqueuedAt: "2026-05-12T00:00:00Z",
+    });
+  });
+
   it("should handle merged PR state", () => {
     const pullRequest = {
       title: "Completed feature",

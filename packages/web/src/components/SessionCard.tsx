@@ -211,7 +211,21 @@ function SessionCardView({ session, onSend, onKill, onMerge, onRestore }: Sessio
   const rateLimited = pr ? isPRRateLimited(pr) : false;
   const prUnenriched = pr ? isPRUnenriched(pr) : false;
   const alerts = getAlerts(session);
-  const isReadyToMerge = !rateLimited && pr?.mergeability.mergeable && pr.state === "open";
+  // The PR is genuinely waiting on a human merge only when there is no
+  // auto-merge / merge-queue mechanism that will merge it for us, and the
+  // queue hasn't just evicted it. Without these guards the green "ready to
+  // merge" frame fires for PRs that GitHub is about to merge on its own,
+  // and for PRs the queue just kicked out (which need a respond banner,
+  // not a merge banner).
+  const mergeIsAutomated =
+    session.lifecycle?.prReason === "auto_merge_armed" ||
+    session.lifecycle?.prReason === "in_merge_queue" ||
+    session.lifecycle?.prReason === "merge_queue_rejected";
+  const isReadyToMerge =
+    !rateLimited &&
+    !mergeIsAutomated &&
+    pr?.mergeability.mergeable &&
+    pr.state === "open";
   const isTerminal = isDashboardSessionTerminal(session);
   const isRestorable = isDashboardSessionRestorable(session);
 
@@ -903,6 +917,10 @@ function getFooterStatusLabel(
   level: ReturnType<typeof getAttentionLevel>,
   isReadyToMerge: boolean,
 ): string {
+  // GitHub will merge this autonomously — never label it "mergeable".
+  if (session.lifecycle?.prReason === "auto_merge_armed") return "auto-merge armed";
+  if (session.lifecycle?.prReason === "in_merge_queue") return "in merge queue";
+  if (session.lifecycle?.prReason === "merge_queue_rejected") return "queue rejected";
   if (isReadyToMerge || level === "merge") return "mergeable";
   if (session.lifecycle?.sessionState === "detecting") return "detecting";
   if (level === "respond") return getSessionTruthLabel(session);

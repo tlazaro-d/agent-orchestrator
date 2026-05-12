@@ -66,6 +66,9 @@ export type CanonicalPRReason =
   | "changes_requested"
   | "approved"
   | "merge_ready"
+  | "auto_merge_armed"
+  | "in_merge_queue"
+  | "merge_queue_rejected"
   | "merged"
   | "closed_unmerged"
   | "cleared_on_restore";
@@ -894,6 +897,43 @@ export interface PREnrichmentData {
   isBehind?: boolean;
   /** List of blockers preventing merge */
   blockers?: string[];
+  /** Individual CI check results (populated from batch enrichment when available) */
+  ciChecks?: CICheck[];
+  /**
+   * Auto-merge state. When present, GitHub will merge the PR autonomously
+   * once its branch protection requirements are met — AO should not page
+   * the human to merge.
+   */
+  autoMerge?: PRAutoMergeInfo;
+  /**
+   * Merge queue membership. When present, the PR is sitting in GitHub's
+   * merge queue and the queue is responsible for testing/merging it.
+   */
+  mergeQueue?: PRMergeQueueInfo;
+  /**
+   * Raw GitHub `mergeStateStatus` (uppercased). Surfaced for callers that
+   * need to distinguish CLEAN / BLOCKED / UNSTABLE / HAS_HOOKS / UNKNOWN —
+   * `isBehind` only captures the `BEHIND` case.
+   */
+  mergeStateStatus?: string;
+}
+
+/** Auto-merge metadata when a user has enabled GitHub auto-merge on a PR. */
+export interface PRAutoMergeInfo {
+  /** Merge method GitHub will use. */
+  mergeMethod: "merge" | "squash" | "rebase";
+  /** Login of the user who armed auto-merge (best-effort). */
+  enabledBy?: string;
+}
+
+/** Merge queue membership state for a PR. */
+export interface PRMergeQueueInfo {
+  /** Queue entry state per GitHub MergeQueueEntryState. */
+  state: "queued" | "awaiting_checks" | "locked" | "mergeable" | "unmergeable";
+  /** Position in the queue (1-based). Optional — GitHub omits in some states. */
+  position?: number;
+  /** ISO timestamp when the PR was enqueued. */
+  enqueuedAt?: string;
 }
 
 /**
@@ -1062,60 +1102,6 @@ export interface MergeReadiness {
   blockers: string[];
 }
 
-/**
- * Batch enrichment data returned by SCM plugins.
- * Contains all the information the orchestrator needs for status detection.
- */
-export interface PREnrichmentData {
-  /** Current PR state */
-  state: PRState;
-  /** Overall CI status */
-  ciStatus: CIStatus;
-  /** Review decision */
-  reviewDecision: ReviewDecision;
-  /** Whether the PR is mergeable based on CI, reviews, and merge state */
-  mergeable: boolean;
-  /** PR title */
-  title?: string;
-  /** Number of additions */
-  additions?: number;
-  /** Number of deletions */
-  deletions?: number;
-  /** Whether PR is a draft */
-  isDraft?: boolean;
-  /** Whether PR has merge conflicts */
-  hasConflicts?: boolean;
-  /** Whether PR is behind base branch */
-  isBehind?: boolean;
-  /** List of blockers preventing merge */
-  blockers?: string[];
-  /** Individual CI check results (populated from batch enrichment when available) */
-  ciChecks?: CICheck[];
-}
-
-/**
- * Observer for GraphQL batch PR enrichment operations.
- * Used by SCM plugins to report batch success/failure to the observability system.
- */
-export interface BatchObserver {
-  /** Record a successful batch enrichment */
-  recordSuccess(data: {
-    batchIndex: number;
-    totalBatches: number;
-    prCount: number;
-    durationMs: number;
-  }): void;
-  /** Record a failed batch enrichment */
-  recordFailure(data: {
-    batchIndex: number;
-    totalBatches: number;
-    prCount: number;
-    error: string;
-    durationMs: number;
-  }): void;
-  /** Log a message at a specific level */
-  log(level: ObservabilityLevel, message: string): void;
-}
 // =============================================================================
 // NOTIFIER — Plugin Slot 6 (PRIMARY INTERFACE)
 // =============================================================================
@@ -1215,6 +1201,9 @@ export type EventType =
   | "merge.ready"
   | "merge.conflicts"
   | "merge.completed"
+  | "merge.auto_armed"
+  | "merge.queued"
+  | "merge.queue_rejected"
   // Reactions
   | "reaction.triggered"
   | "reaction.escalated"

@@ -132,6 +132,125 @@ describe("status decision helpers", () => {
       }),
     );
   });
+
+  it("auto-merge armed with pending CI maps to auto_merge_armed (not ci_pending)", () => {
+    const decision = resolvePREnrichmentDecision(
+      {
+        state: "open",
+        ciStatus: "pending",
+        reviewDecision: "approved",
+        mergeable: false,
+        autoMerge: { mergeMethod: "squash", enabledBy: "alice" },
+      },
+      {
+        shouldEscalateIdleToStuck: false,
+        idleWasBlocked: false,
+        activityEvidence: "activity_signal=valid",
+      },
+    );
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        status: "mergeable",
+        prState: "open",
+        prReason: "auto_merge_armed",
+      }),
+    );
+  });
+
+  it("auto-merge armed with green CI does NOT fire merge_ready", () => {
+    const decision = resolvePREnrichmentDecision(
+      {
+        state: "open",
+        ciStatus: "passing",
+        reviewDecision: "approved",
+        mergeable: true,
+        autoMerge: { mergeMethod: "squash" },
+      },
+      {
+        shouldEscalateIdleToStuck: false,
+        idleWasBlocked: false,
+        activityEvidence: "activity_signal=valid",
+      },
+    );
+
+    // Critical: when auto-merge is armed we must NOT classify as merge_ready
+    // even though all the merge_ready preconditions are met. GitHub will merge.
+    expect(decision.prReason).toBe("auto_merge_armed");
+  });
+
+  it("merge-queue membership takes precedence over CI failing", () => {
+    const decision = resolvePREnrichmentDecision(
+      {
+        state: "open",
+        ciStatus: "failing", // PR's own checks are stale; queue runs its own
+        reviewDecision: "approved",
+        mergeable: false,
+        mergeQueue: { state: "awaiting_checks", position: 2 },
+      },
+      {
+        shouldEscalateIdleToStuck: false,
+        idleWasBlocked: false,
+        activityEvidence: "activity_signal=valid",
+      },
+    );
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        status: "mergeable",
+        prState: "open",
+        prReason: "in_merge_queue",
+      }),
+    );
+  });
+
+  it("merge-queue eviction surfaces merge_queue_rejected", () => {
+    const decision = resolvePREnrichmentDecision(
+      {
+        state: "open",
+        ciStatus: "passing",
+        reviewDecision: "approved",
+        mergeable: true,
+        // No more mergeQueue field — we were just kicked out
+      },
+      {
+        shouldEscalateIdleToStuck: false,
+        idleWasBlocked: false,
+        activityEvidence: "activity_signal=valid",
+        previousPRReason: "in_merge_queue",
+      },
+    );
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        status: "mergeable",
+        prState: "open",
+        prReason: "merge_queue_rejected",
+      }),
+    );
+  });
+
+  it("changes_requested still wins over auto_merge_armed", () => {
+    // Auto-merge respects changes_requested on GitHub's side. If a reviewer
+    // has explicitly blocked the PR, the human should see the block — not a
+    // silent "GitHub will merge it" badge.
+    const decision = resolvePREnrichmentDecision(
+      {
+        state: "open",
+        ciStatus: "pending",
+        reviewDecision: "changes_requested",
+        mergeable: false,
+        autoMerge: { mergeMethod: "squash" },
+      },
+      {
+        shouldEscalateIdleToStuck: false,
+        idleWasBlocked: false,
+        activityEvidence: "activity_signal=valid",
+      },
+    );
+
+    expect(decision.prReason).toBe("changes_requested");
+  });
 });
 
 /** Helper: write standard session metadata and return a lifecycle manager */
