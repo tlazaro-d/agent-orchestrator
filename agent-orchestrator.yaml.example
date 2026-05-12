@@ -176,3 +176,11 @@ projects:
 #     threshold: 10m
 #     action: notify
 #     priority: urgent
+
+# ---------- Static-file tracker (alternative to github/linear) ----------
+# Useful for Jira-driven workflows via the jira-epic-bootstrap Claude Code skill.
+# tracker:
+#   plugin: static-file
+#   ticketsPath: ./.agent-orchestrator/EPIC/tickets.json
+#   seedPromptDir: ./.agent-orchestrator/EPIC
+#   issueUrlBase: https://your-tracker.example.com/browse/
