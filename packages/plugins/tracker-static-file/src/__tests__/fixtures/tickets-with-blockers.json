@@ -1,0 +1,5 @@
+[
+  {"id":"REP-1","title":"A","status":"done","baseBranch":"main","blockers":[],"seedPromptPath":"prompts/REP-1.md"},
+  {"id":"REP-2","title":"B","status":"open","baseBranch":"main","blockers":[],"seedPromptPath":"prompts/REP-2.md"},
+  {"id":"REP-3","title":"C","status":"open","baseBranch":"main","blockers":["REP-2"],"seedPromptPath":"prompts/REP-3.md"}
+]
