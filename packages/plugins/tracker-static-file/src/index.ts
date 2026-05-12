@@ -12,6 +12,7 @@ import {
   type Issue,
   type IssueFilters,
   type IssueUpdate,
+  type PluginModule,
   type ProjectConfig,
 } from "@aoagents/ao-core";
 import type { TicketEntry, StaticFileTrackerConfig, TicketsFile } from "./types.js";
@@ -221,3 +222,34 @@ export function create(config?: Record<string, unknown>): Tracker {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Plugin module export
+// ---------------------------------------------------------------------------
+
+export const manifest = {
+  name: "static-file",
+  slot: "tracker" as const,
+  description:
+    "AO Tracker plugin: reads tickets from a static JSON file. Designed to consume the output of the jira-epic-bootstrap Claude Code skill.",
+  version: "0.6.0",
+};
+
+/**
+ * Auto-detect helper. Returns true only if a configured `ticketsPath` exists
+ * and is readable. With no config (or no ticketsPath), returns false — this
+ * plugin has no implicit "default location" to probe.
+ */
+export function detect(config?: Record<string, unknown>): boolean {
+  if (!config || typeof config !== "object") return false;
+  const ticketsPath = (config as { ticketsPath?: unknown }).ticketsPath;
+  if (typeof ticketsPath !== "string" || ticketsPath.length === 0) return false;
+  try {
+    fs.accessSync(ticketsPath, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export default { manifest, create, detect } satisfies PluginModule<Tracker>;

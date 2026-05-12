@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { create } from "../index.js";
+import plugin, { create, manifest, detect, create as namedCreate } from "../index.js";
 import type { ProjectConfig } from "@aoagents/ao-core";
 
 const FIXTURES = path.join(__dirname, "fixtures");
@@ -157,5 +157,32 @@ describe("tracker-static-file: name", () => {
   it("returns 'static-file'", () => {
     const tracker = create({ ticketsPath: path.join(FIXTURES, "tickets-minimal.json") });
     expect(tracker.name).toBe("static-file");
+  });
+});
+
+describe("plugin module exports", () => {
+  it("manifest has correct shape", () => {
+    expect(manifest.name).toBe("static-file");
+    expect(manifest.slot).toBe("tracker");
+    expect(manifest.description).toContain("static");
+    expect(manifest.version).toBeTruthy();
+  });
+
+  it("default export bundles manifest + create + detect", () => {
+    expect(plugin.manifest).toBe(manifest);
+    expect(plugin.create).toBe(namedCreate);
+    expect(plugin.detect).toBe(detect);
+  });
+
+  it("detect returns false when no config provided", () => {
+    expect(detect!()).toBe(false);
+  });
+
+  it("detect returns false when ticketsPath does not exist", () => {
+    expect(detect!({ ticketsPath: "/nonexistent/path/tickets.json" })).toBe(false);
+  });
+
+  it("detect returns true when ticketsPath exists and is readable", () => {
+    expect(detect!({ ticketsPath: path.join(FIXTURES, "tickets-minimal.json") })).toBe(true);
   });
 });
