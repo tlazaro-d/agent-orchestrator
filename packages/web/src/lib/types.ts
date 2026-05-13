@@ -467,6 +467,25 @@ function getDetailedAttentionLevel(session: DashboardSession): AttentionLevel {
     return "done";
   }
 
+  // ── Merge-queue eviction: page the human — GitHub gave up. ────────
+  // Check before the generic "merge" lane so the user sees the warning,
+  // not a stale green "ready to merge" card.
+  if (session.lifecycle?.prReason === "merge_queue_rejected") {
+    return "respond";
+  }
+
+  // ── Auto-merge / merge-queue: GitHub is handling it, no human action.
+  // These map to legacy `status === "mergeable"` and must be surfaced
+  // BEFORE the generic merge lane below — otherwise the dashboard would
+  // pop a green "ready to merge" card and the notifier would page the
+  // human even though the human has already armed auto-merge.
+  if (
+    session.lifecycle?.prReason === "auto_merge_armed" ||
+    session.lifecycle?.prReason === "in_merge_queue"
+  ) {
+    return "pending";
+  }
+
   // ── Merge: PR is ready — one click to clear ───────────────────────
   // Check this early: if the PR is mergeable, that's the most valuable
   // action for the human regardless of agent activity.

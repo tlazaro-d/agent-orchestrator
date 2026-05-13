@@ -193,6 +193,15 @@ function inferPriority(type: EventType): EventPriority {
   if (type.startsWith("summary.")) {
     return "info";
   }
+  // Auto-merge armed and merge-queue accepted are quieter "FYI" signals —
+  // GitHub is going to do the merge, no human action needed.
+  if (type === "merge.auto_armed" || type === "merge.queued") {
+    return "info";
+  }
+  // Merge-queue eviction is a human-attention event — the queue gave up.
+  if (type === "merge.queue_rejected") {
+    return "warning";
+  }
   if (
     type.includes("approved") ||
     type.includes("ready") ||
@@ -270,6 +279,29 @@ function prStateToEventType(
   switch (to) {
     case "closed":
       return "pr.closed";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Map a transition in `pr.reason` to an event type when the legacy `status`
+ * field would otherwise be unchanged. Today this covers GitHub auto-merge
+ * arming and merge-queue lifecycle — all three new sub-states share the
+ * legacy `mergeable` status, so we need a reason-aware emission path.
+ */
+function prReasonToEventType(
+  from: Session["lifecycle"]["pr"]["reason"],
+  to: Session["lifecycle"]["pr"]["reason"],
+): EventType | null {
+  if (from === to) return null;
+  switch (to) {
+    case "auto_merge_armed":
+      return "merge.auto_armed";
+    case "in_merge_queue":
+      return "merge.queued";
+    case "merge_queue_rejected":
+      return "merge.queue_rejected";
     default:
       return null;
   }
@@ -750,6 +782,9 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
           status: c.status,
           url: c.url,
         })),
+        autoMerge: cached.autoMerge,
+        mergeQueue: cached.mergeQueue,
+        mergeStateStatus: cached.mergeStateStatus,
         enrichedAt: new Date().toISOString(),
       });
 
@@ -1201,6 +1236,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
               shouldEscalateIdleToStuck,
               idleWasBlocked,
               activityEvidence,
+              previousPRReason: session.lifecycle.pr.reason,
             }),
           );
         }
@@ -2425,8 +2461,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         }
       }
 
-      // Handle transition: notify humans and/or trigger reactions
-      const eventType = statusToEventType(oldStatus, newStatus);
+      // Handle transition: notify humans and/or trigger reactions.
+      // The legacy `mergeable` status covers three distinct lifecycle reasons:
+      //   - "merge_ready"          → genuine "human, click merge" → emit merge.ready
+      //   - "auto_merge_armed"     → GitHub will merge once gated checks pass → silent
+      //   - "in_merge_queue"       → merge queue owns the merge → silent
+      //   - "merge_queue_rejected" → page the human as a respond-level event
+      // statusToEventType only sees the legacy status, so we suppress
+      // merge.ready here when the reason isn't actually merge_ready.
+      let eventType = statusToEventType(oldStatus, newStatus);
+      if (eventType === "merge.ready" && session.lifecycle.pr.reason !== "merge_ready") {
+        eventType = null;
+      }
       if (eventType) {
         let reactionHandledNotify = false;
         const reactionKey = eventToReactionKey(eventType);
@@ -2558,6 +2604,31 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         });
         await notifyHuman(prEvent, inferPriority(prEventType));
       }
+    }
+
+    // Reason transitions that don't change legacy `status` (auto-merge arming,
+    // merge-queue lifecycle). Emitted separately so the dashboard/notifier
+    // can distinguish "GitHub is going to merge this" from "human, click merge".
+    const prReasonEventType = prReasonToEventType(
+      previousLifecycle.pr.reason,
+      session.lifecycle.pr.reason,
+    );
+    if (prReasonEventType) {
+      const context = buildEventContext(session, prEnrichmentCache);
+      const reasonEvent = createEvent(prReasonEventType, {
+        sessionId: session.id,
+        projectId: session.projectId,
+        message: `${session.id}: PR ${previousLifecycle.pr.reason ?? "?"} → ${session.lifecycle.pr.reason ?? "?"}`,
+        data: {
+          oldPRReason: previousLifecycle.pr.reason,
+          newPRReason: session.lifecycle.pr.reason,
+          prNumber: session.lifecycle.pr.number,
+          prUrl: session.lifecycle.pr.url,
+          context,
+          schemaVersion: 2,
+        },
+      });
+      await notifyHuman(reasonEvent, inferPriority(prReasonEventType));
     }
 
     // Pin first quality summary for title stability

@@ -103,6 +103,17 @@ export interface PREnrichmentData {
     author: string;
     body: string;
   }>;
+  /** GitHub auto-merge metadata when the user has armed auto-merge on the PR. */
+  autoMerge?: {
+    mergeMethod: "merge" | "squash" | "rebase";
+    enabledBy?: string;
+  };
+  /** GitHub merge queue membership. */
+  mergeQueue?: {
+    state: "queued" | "awaiting_checks" | "locked" | "mergeable" | "unmergeable";
+    position?: number;
+    enqueuedAt?: string;
+  };
 }
 
 /** Generate cache key for a PR: `owner/repo#123` */

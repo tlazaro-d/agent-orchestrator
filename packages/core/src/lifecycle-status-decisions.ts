@@ -9,7 +9,9 @@ import {
   type CanonicalSessionReason,
   type CanonicalSessionState,
   type CIStatus,
+  type PRAutoMergeInfo,
   type PREnrichmentData,
+  type PRMergeQueueInfo,
   type SessionStatus,
 } from "./types.js";
 import { supportsRecentLiveness } from "./activity-signal.js";
@@ -66,6 +68,12 @@ interface OpenPRDecisionInput {
   shouldEscalateIdleToStuck: boolean;
   idleWasBlocked: boolean;
   activityEvidence: string;
+  /** Auto-merge metadata from GitHub. When present, the human does not need to merge. */
+  autoMerge?: PRAutoMergeInfo;
+  /** Merge queue entry from GitHub. When present, the queue owns merge correctness. */
+  mergeQueue?: PRMergeQueueInfo;
+  /** Previous `pr.reason` (if known) so we can detect "was queued, no longer is, not merged". */
+  previousPRReason?: CanonicalPRReason;
 }
 
 interface ProbeResult {
@@ -196,6 +204,51 @@ function resolveTerminalPRStateDecision(
 }
 
 function resolveOpenPRDecision(input: OpenPRDecisionInput): LifecycleDecision {
+  // Merge queue takes precedence over CI / review: once the PR is in the
+  // queue, GitHub owns testing and merging. The PR's own checks may be stale
+  // — the queue runs its own check suites on a temp merge-group ref.
+  if (input.mergeQueue) {
+    return createLifecycleDecision({
+      status: SESSION_STATUS.MERGEABLE,
+      evidence: `in_merge_queue state=${input.mergeQueue.state}`,
+      detecting: { attempts: 0 },
+      prState: "open",
+      prReason: "in_merge_queue",
+      sessionState: "idle",
+      sessionReason: "awaiting_external_review",
+    });
+  }
+
+  // Detect "kicked out of merge queue" — was in queue last poll, isn't now,
+  // and the PR is still open (not merged). Page the human to investigate.
+  if (input.previousPRReason === "in_merge_queue") {
+    return createLifecycleDecision({
+      status: SESSION_STATUS.MERGEABLE,
+      evidence: "merge_queue_rejected",
+      detecting: { attempts: 0 },
+      prState: "open",
+      prReason: "merge_queue_rejected",
+      sessionState: "idle",
+      sessionReason: "awaiting_external_review",
+    });
+  }
+
+  // Auto-merge armed: GitHub will merge the PR when its branch protection is
+  // satisfied. Suppress the "ready to merge" notification unless the user has
+  // explicitly requested changes (which auto-merge would respect by waiting).
+  // Pending CI is fine — that's the normal "waiting on checks" auto-merge case.
+  if (input.autoMerge && input.reviewDecision !== "changes_requested") {
+    return createLifecycleDecision({
+      status: SESSION_STATUS.MERGEABLE,
+      evidence: `auto_merge_armed method=${input.autoMerge.mergeMethod}`,
+      detecting: { attempts: 0 },
+      prState: "open",
+      prReason: "auto_merge_armed",
+      sessionState: "idle",
+      sessionReason: "awaiting_external_review",
+    });
+  }
+
   if (input.ciFailing) {
     return createLifecycleDecision({
       status: SESSION_STATUS.CI_FAILED,
@@ -352,7 +405,7 @@ export function resolvePREnrichmentDecision(
   options: Pick<
     OpenPRDecisionInput,
     "shouldEscalateIdleToStuck" | "idleWasBlocked" | "activityEvidence"
-  >,
+  > & { previousPRReason?: CanonicalPRReason },
 ): LifecycleDecision {
   const terminalDecision = resolveTerminalPRStateDecision(cachedData.state);
   if (terminalDecision) {
@@ -366,6 +419,9 @@ export function resolvePREnrichmentDecision(
     shouldEscalateIdleToStuck: options.shouldEscalateIdleToStuck,
     idleWasBlocked: options.idleWasBlocked,
     activityEvidence: options.activityEvidence,
+    ...(cachedData.autoMerge ? { autoMerge: cachedData.autoMerge } : {}),
+    ...(cachedData.mergeQueue ? { mergeQueue: cachedData.mergeQueue } : {}),
+    ...(options.previousPRReason ? { previousPRReason: options.previousPRReason } : {}),
   });
 }
 
@@ -377,6 +433,9 @@ export function resolvePRLiveDecision(input: {
   shouldEscalateIdleToStuck: boolean;
   idleWasBlocked: boolean;
   activityEvidence: string;
+  autoMerge?: PRAutoMergeInfo;
+  mergeQueue?: PRMergeQueueInfo;
+  previousPRReason?: CanonicalPRReason;
 }): LifecycleDecision {
   const terminalDecision = resolveTerminalPRStateDecision(input.prState);
   if (terminalDecision) {
@@ -390,6 +449,9 @@ export function resolvePRLiveDecision(input: {
     shouldEscalateIdleToStuck: input.shouldEscalateIdleToStuck,
     idleWasBlocked: input.idleWasBlocked,
     activityEvidence: input.activityEvidence,
+    ...(input.autoMerge ? { autoMerge: input.autoMerge } : {}),
+    ...(input.mergeQueue ? { mergeQueue: input.mergeQueue } : {}),
+    ...(input.previousPRReason ? { previousPRReason: input.previousPRReason } : {}),
   });
 }
 

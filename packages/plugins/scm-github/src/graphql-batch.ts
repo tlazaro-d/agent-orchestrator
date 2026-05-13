@@ -12,8 +12,10 @@ import {
   type BatchObserver,
   type CICheck,
   type CIStatus,
+  type PRAutoMergeInfo,
   type PREnrichmentData,
   type PRInfo,
+  type PRMergeQueueInfo,
   type PRState,
   type ReviewDecision,
 } from "@aoagents/ao-core";
@@ -617,6 +619,15 @@ const PR_FIELDS = `
   reviewDecision
   headRefName
   headRefOid
+  autoMergeRequest {
+    mergeMethod
+    enabledBy { login }
+  }
+  mergeQueueEntry {
+    state
+    position
+    enqueuedAt
+  }
   commits(last: 1) {
     nodes {
       commit {
@@ -903,6 +914,48 @@ function parseReviewDecision(reviewDecision: unknown): ReviewDecision {
 }
 
 /**
+ * Parse `autoMergeRequest` payload from GraphQL into PRAutoMergeInfo.
+ * Returns undefined when auto-merge is not armed on the PR.
+ */
+function parseAutoMerge(raw: unknown): PRAutoMergeInfo | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const methodRaw = typeof o["mergeMethod"] === "string" ? o["mergeMethod"].toUpperCase() : "";
+  const mergeMethod: PRAutoMergeInfo["mergeMethod"] =
+    methodRaw === "SQUASH" ? "squash" : methodRaw === "REBASE" ? "rebase" : "merge";
+  const enabledByRaw = o["enabledBy"];
+  const enabledBy =
+    enabledByRaw && typeof enabledByRaw === "object" &&
+    typeof (enabledByRaw as Record<string, unknown>)["login"] === "string"
+      ? ((enabledByRaw as Record<string, unknown>)["login"] as string)
+      : undefined;
+  return enabledBy ? { mergeMethod, enabledBy } : { mergeMethod };
+}
+
+/**
+ * Parse `mergeQueueEntry` payload from GraphQL into PRMergeQueueInfo.
+ * Returns undefined when the PR is not in a merge queue.
+ */
+function parseMergeQueueEntry(raw: unknown): PRMergeQueueInfo | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const stateRaw = typeof o["state"] === "string" ? o["state"].toUpperCase() : "";
+  let state: PRMergeQueueInfo["state"];
+  if (stateRaw === "AWAITING_CHECKS") state = "awaiting_checks";
+  else if (stateRaw === "LOCKED") state = "locked";
+  else if (stateRaw === "MERGEABLE") state = "mergeable";
+  else if (stateRaw === "UNMERGEABLE") state = "unmergeable";
+  else state = "queued"; // QUEUED or unknown — treat as queued
+  const position = typeof o["position"] === "number" ? o["position"] : undefined;
+  const enqueuedAt = typeof o["enqueuedAt"] === "string" ? o["enqueuedAt"] : undefined;
+  return {
+    state,
+    ...(position !== undefined ? { position } : {}),
+    ...(enqueuedAt !== undefined ? { enqueuedAt } : {}),
+  };
+}
+
+/**
  * Parse PR state from GraphQL response.
  */
 function parsePRState(state: unknown): PRState {
@@ -959,6 +1012,14 @@ function extractPREnrichment(
       : "";
   const hasConflicts = mergeable === "CONFLICTING";
   const isBehind = mergeStateStatus === "BEHIND";
+
+  // Auto-merge (user enabled GitHub auto-merge on the PR)
+  const autoMergeRaw = pr["autoMergeRequest"];
+  const autoMerge = parseAutoMerge(autoMergeRaw);
+
+  // Merge queue membership
+  const mergeQueueRaw = pr["mergeQueueEntry"];
+  const mergeQueue = parseMergeQueueEntry(mergeQueueRaw);
 
   // Extract review decision
   const reviewDecision = parseReviewDecision(pr["reviewDecision"]);
@@ -1024,6 +1085,9 @@ function extractPREnrichment(
     isBehind,
     blockers,
     ...(ciChecks !== undefined ? { ciChecks } : {}),
+    ...(autoMerge !== undefined ? { autoMerge } : {}),
+    ...(mergeQueue !== undefined ? { mergeQueue } : {}),
+    ...(mergeStateStatus ? { mergeStateStatus } : {}),
   };
 
   return { data, headSha };
